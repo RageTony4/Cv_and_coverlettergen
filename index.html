@@ -8,9 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Libraries for DOCX and PDF parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.5.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
+        html {
+            scroll-behavior: smooth;
+        }
         body { font-family: 'Inter', sans-serif; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -18,9 +22,31 @@
         input[type="file"] { display: none; }
         .custom-file-upload { border: 1px solid #4a5568; display: inline-block; padding: 8px 12px; cursor: pointer; background-color: #2d3748; color: #e2e8f0; border-radius: 0.375rem; transition: background-color 0.2s; }
         .custom-file-upload:hover { background-color: #4a5568; }
+        /* Toast Notification Styles */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            background-color: #2dd4bf; /* Teal */
+            color: #1a202c; /* Dark Gray */
+            font-weight: 600;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s, top 0.5s;
+        }
+        .toast.show {
+            top: 40px;
+            opacity: 1;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-300 flex items-center justify-center min-h-screen p-4">
+    <!-- Toast Notification Element -->
+    <div id="toast" class="toast"></div>
+
     <div class="w-full max-w-4xl mx-auto space-y-8">
         <!-- Input Card -->
         <div id="inputCard" class="bg-gray-800 p-8 rounded-xl shadow-2xl transition-opacity duration-500">
@@ -29,7 +55,7 @@
             <div class="space-y-6">
                 <div>
                     <label for="jobUrl" class="block text-sm font-medium text-gray-400 mb-1">Job Posting URL</label>
-                    <input type="text" id="jobUrl" name="jobUrl" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://example.com/job-posting/...">
+                    <input type="text" id="jobUrl" name="jobUrl" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://www.linkedin.com/jobs/view/...">
                 </div>
                  <div>
                     <label for="toneSelector" class="block text-sm font-medium text-gray-400 mb-1">Select a Tone</label>
@@ -55,45 +81,49 @@
                 </button>
             </div>
         </div>
-        <!-- Loading State -->
+        <!-- Loading State, Error Message, Results Card, etc. are below -->
         <div id="loadingState" class="hidden text-center"><div class="loader mx-auto"></div><p class="mt-4 text-lg">Processing...</p></div>
-        <!-- Error Message -->
         <div id="errorState" class="hidden bg-red-900 border border-red-700 text-red-200 p-4 rounded-lg"><h3 class="font-bold">An Error Occurred</h3><p id="errorMessage"></p><button onclick="resetApp()" class="mt-4 bg-red-700 text-white py-2 px-4 rounded-lg">Try Again</button></div>
-        <!-- Results Card -->
-        <div id="resultsCard" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl transition-opacity duration-500">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div class="lg:col-span-2">
-                    <h2 class="text-2xl font-bold text-white mb-4">Your Enhanced CV</h2>
-                    <textarea id="modifiedCv" class="w-full h-96 bg-gray-900 text-gray-300 p-4 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-                    <div class="mt-4 flex flex-wrap gap-4">
-                        <button id="copyBtn" class="bg-green-600 text-white py-2 px-5 rounded-lg hover:bg-green-700 transition">Copy Text</button>
-                        <button id="downloadTxtBtn" class="bg-blue-600 text-white py-2 px-5 rounded-lg hover:bg-blue-700 transition">Download (.txt)</button>
-                        <button id="redoBtn" class="bg-gray-600 text-white py-2 px-5 rounded-lg hover:bg-gray-700 transition">Redo Analysis</button>
-                        <button onclick="resetApp()" class="bg-gray-700 text-white py-2 px-5 rounded-lg hover:bg-red-700 transition">Start Over</button>
-                    </div>
-                     <div class="mt-6 border-t border-gray-700 pt-6">
-                         <button id="generateCoverLetterBtn" class="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                            Generate Cover Letter
-                        </button>
-                    </div>
-                </div>
-                <div class="lg:col-span-1">
-                    <h2 class="text-2xl font-bold text-white mb-4">Analysis Breakdown</h2>
-                    <div class="bg-gray-900 p-4 rounded-lg">
-                        <h3 class="text-lg font-semibold text-white">CV Match Score</h3>
-                        <div id="cvScore" class="text-5xl font-bold text-green-400 my-2">--%</div>
-                        <h3 class="text-lg font-semibold text-white mt-6">Changes Made</h3>
-                        <ul id="changesList" class="list-disc list-inside space-y-2 mt-2 text-gray-400"></ul>
-                        <h3 class="text-lg font-semibold text-white mt-6">Recommendations</h3>
-                        <ul id="recommendationsList" class="list-disc list-inside space-y-2 mt-2 text-gray-400"></ul>
-                    </div>
+        
+        <!-- Results Section -->
+        <div id="resultsCard" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl transition-opacity duration-500 space-y-12">
+            <!-- Section 1: Enhanced CV -->
+            <div>
+                <h2 class="text-2xl font-bold text-white mb-4">1. Your Enhanced CV</h2>
+                <textarea id="modifiedCv" class="w-full h-96 bg-gray-900 text-gray-300 p-4 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                <div class="mt-4 flex flex-wrap gap-4">
+                    <button id="copyBtn" class="bg-green-600 text-white py-2 px-5 rounded-lg hover:bg-green-700 transition">Copy Text</button>
+                    <button id="downloadTxtBtn" class="bg-blue-600 text-white py-2 px-5 rounded-lg hover:bg-blue-700 transition">Download (.txt)</button>
+                    <button id="redoBtn" class="bg-gray-600 text-white py-2 px-5 rounded-lg hover:bg-gray-700 transition">Redo Analysis</button>
+                    <button onclick="resetApp()" class="bg-gray-700 text-white py-2 px-5 rounded-lg hover:bg-red-700 transition">Start Over</button>
                 </div>
             </div>
+
+            <!-- Section 2: Analysis Breakdown -->
+            <div>
+                <h2 class="text-2xl font-bold text-white mb-4">2. Analysis Breakdown</h2>
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-lg font-semibold text-white">CV Match Score</h3>
+                    <div id="cvScore" class="text-5xl font-bold text-green-400 my-2">--%</div>
+                    <h3 class="text-lg font-semibold text-white mt-6">Changes Made</h3>
+                    <ul id="changesList" class="list-disc list-inside space-y-4 mt-2 text-gray-400"></ul>
+                    <h3 class="text-lg font-semibold text-white mt-6">Recommendations</h3>
+                    <ul id="recommendationsList" class="list-disc list-inside space-y-2 mt-2 text-gray-400"></ul>
+                </div>
+            </div>
+            
+            <!-- Section 3: Generate Cover Letter -->
+            <div class="border-t border-gray-700 pt-8">
+                 <h2 class="text-2xl font-bold text-white mb-4">3. Generate Your Cover Letter</h2>
+                 <button id="generateCoverLetterBtn" class="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Generate Cover Letter
+                </button>
+            </div>
         </div>
-        <!-- Cover Letter Section -->
-        <div id="coverLetterSection" class="hidden">
+        
+        <div id="coverLetterSection" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl transition-opacity duration-500">
             <div id="coverLetterLoadingState" class="hidden text-center"><div class="loader mx-auto"></div><p class="mt-4 text-lg">Generating your custom cover letter...</p></div>
-            <div id="coverLetterCard" class="hidden bg-gray-800 p-8 rounded-xl shadow-2xl transition-opacity duration-500">
+            <div id="coverLetterCard" class="hidden">
                  <h2 class="text-2xl font-bold text-white mb-4">Your Generated Cover Letter</h2>
                  <textarea id="coverLetterText" class="w-full h-96 bg-gray-900 text-gray-300 p-4 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
                  <div class="mt-4 flex flex-wrap gap-4">
@@ -120,6 +150,7 @@
         const coverLetterLoadingState = document.getElementById('coverLetterLoadingState');
         const coverLetterCard = document.getElementById('coverLetterCard');
         const coverLetterTextarea = document.getElementById('coverLetterText');
+        const toast = document.getElementById('toast');
 
         let cvTextContent = '';
         let lastAnalysisParams = {};
@@ -130,8 +161,8 @@
         document.getElementById('downloadTxtBtn').addEventListener('click', () => downloadAsTXT(modifiedCvTextarea.value, "Enhanced_CV.txt"));
         document.getElementById('copyBtn').addEventListener('click', () => copyText(modifiedCvTextarea, document.getElementById('copyBtn')));
         document.getElementById('redoBtn').addEventListener('click', () => {
-            if(lastAnalysisParams.jobUrl && lastAnalysisParams.cvText && lastAnalysisParams.tone) {
-                runAIAnalysis(lastAnalysisParams.jobUrl, lastAnalysisParams.cvText, lastAnalysisParams.tone);
+            if(lastAnalysisParams.jobDescription && lastAnalysisParams.cvText && lastAnalysisParams.tone) {
+                runAIAnalysis(lastAnalysisParams.jobDescription, lastAnalysisParams.cvText, lastAnalysisParams.tone);
             }
         });
         generateCoverLetterBtn.addEventListener('click', handleCoverLetterGeneration);
@@ -184,14 +215,17 @@
         }
 
         function handleGeneration() {
-            const jobDescription = `Job Description from URL: ${jobUrlInput.value}`;
+            const jobUrl = jobUrlInput.value;
+            const jobDescription = `Job Posting URL: ${jobUrl}`;
             const selectedTone = toneSelector.value;
-            lastAnalysisParams = { jobUrl: jobDescription, cvText: cvTextContent, tone: selectedTone };
+            lastAnalysisParams = { jobDescription: jobDescription, cvText: cvTextContent, tone: selectedTone };
             runAIAnalysis(jobDescription, cvTextContent, selectedTone);
         }
 
-        async function callServerlessFunction(prompt, model) {
-            const response = await fetch('/.netlify/functions/ai_analysis', {
+        // This function calls your secure backend
+        async function callServer(prompt, model) {
+            // UPDATED: This path is the standard for Vercel functions
+            const response = await fetch('/api/ai_analysis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt, model })
@@ -209,13 +243,17 @@
             errorState.classList.add('hidden');
             coverLetterSection.classList.add('hidden');
             loadingState.classList.remove('hidden');
-            const prompt = `You are "Career-GPT," an expert-level career coach. Your task is to analyze the provided [JOB_DESCRIPTION] and [USER_CV] and return a single JSON object. Do not include any text outside the JSON object. The rewrite must be in a ${tone} tone. JSON Structure: {"cv_score": <score from 0-100>, "modified_cv": "<The rewritten cv>", "changes_made": [{"change": "<A description of the change>", "reason": "<The reason for the change>"}], "recommendations": ["<An actionable recommendation>"]}. Input: [JOB_DESCRIPTION]: ${jobDescription} [USER_CV]: ${cvText}`;
+            
+            const prompt = `You are "Career-GPT," an expert-level career coach. Your task is to analyze the provided [JOB_DESCRIPTION_URL] and [USER_CV] and return a single JSON object. Do not include any text outside the JSON object. The rewrite must be in a ${tone} tone. You should infer the job details from the URL. JSON Structure: {"cv_score": <score from 0-100>, "modified_cv": "<The rewritten cv>", "changes_made": [{"change": "<A description of the change>", "reason": "<The reason for the change>"}], "recommendations": ["<An actionable recommendation>"]}. Input: [JOB_DESCRIPTION_URL]: ${jobDescription} [USER_CV]: ${cvText}`;
+
             try {
-                const data = await callServerlessFunction(prompt.trim(), 'deepseek/deepseek-r1-0528:free');
+                const data = await callServer(prompt.trim(), 'deepseek/deepseek-r1-0528:free');
                 const aiResponseString = data.choices[0].message.content;
                 const jsonMatch = aiResponseString.match(/\{[\s\S]*\}/);
                 if (!jsonMatch) throw new Error("AI did not return a valid JSON object.");
+                
                 displayResults(JSON.parse(jsonMatch[0]));
+
             } catch (error) {
                 showError(`CV analysis failed: ${error.message}`);
             }
@@ -241,6 +279,7 @@
             loadingState.classList.add('hidden');
             resultsCard.classList.remove('hidden');
             generateCoverLetterBtn.disabled = false;
+            showToast("Analysis Complete!");
         }
 
         async function handleCoverLetterGeneration() {
@@ -248,10 +287,16 @@
             coverLetterCard.classList.add('hidden');
             coverLetterLoadingState.classList.remove('hidden');
             generateCoverLetterBtn.disabled = true;
-            const prompt = `You are "Career-GPT," an expert career writer. Based on the following [JOB_DESCRIPTION] and the enhanced [MODIFIED_CV], write a compelling, professional cover letter. The tone must be ${lastAnalysisParams.tone}. Output only the letter text. Do not include headings or other text. [JOB_DESCRIPTION]: ${lastAnalysisParams.jobUrl} [MODIFIED_CV]: ${modifiedCvTextarea.value}`;
+
+            const prompt = `You are "Career-GPT," an expert career writer. Based on the following [JOB_DESCRIPTION_URL] and [MODIFIED_CV], write a compelling, professional cover letter. The tone must be ${lastAnalysisParams.tone}. Output only the letter text. Do not include headings or other text. [JOB_DESCRIPTION_URL]: ${lastAnalysisParams.jobDescription} [MODIFIED_CV]: ${modifiedCvTextarea.value}`;
+            
             try {
-                const data = await callServerlessFunction(prompt.trim(), 'deepseek/deepseek-r1-0528:free');
+                const data = await callServer(prompt.trim(), 'deepseek/deepseek-r1-0528:free');
                 coverLetterTextarea.value = data.choices[0].message.content;
+                showToast("Cover Letter Generated!");
+                // Smoothly scroll to the cover letter section
+                setTimeout(() => coverLetterSection.scrollIntoView({ behavior: 'smooth' }), 100);
+
             } catch (error) {
                 showError(`Cover letter generation failed: ${error.message}`);
             } finally {
@@ -259,6 +304,14 @@
                 coverLetterCard.classList.remove('hidden');
                 generateCoverLetterBtn.disabled = false;
             }
+        }
+        
+        function showToast(message) {
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
         }
 
         function showError(message) {
